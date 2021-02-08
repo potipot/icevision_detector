@@ -137,3 +137,15 @@ class EffDetModel(BaseModel):
         class_map_valid = self.val_dataloader.dataloader.dataset.records[0].class_map
         class_map_train = self.train_dataloader.dataloader.dataset.records[0].class_map
         return class_map_valid
+
+    def freeze_to_head(self, train_class_head=True, train_bbox_head=False):
+        """
+        Freezes the model up to the head part.
+        Parameters control whether to train labels classifier and bbox regressor.
+        """
+        self.freeze()
+        for param in self.model.model.box_net.parameters():
+             param.requires_grad = train_bbox_head
+        for param in self.model.model.class_net.parameters():
+            param.requires_grad = train_class_head
+        self.train()
