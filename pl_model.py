@@ -17,7 +17,7 @@ __all__ = ['BaseModel', 'EffDetModel']
 
 
 @dataclass
-class Args:
+class TimmConfig:
     opt:str = 'fusedmomentum'
     weight_decay:float = 4e-5
     lr: float = 0.01
@@ -45,18 +45,17 @@ class Args:
 
 class BaseModel(efficientdet.lightning.ModelAdapter):
     def configure_optimizers(self):
-        args = Args(lr=0.12)
-        optimizer = create_optimizer(args, self.model)
-        lr_scheduler, num_epochs = create_scheduler(args, optimizer)
+        optimizer = create_optimizer(self.timm_config, self.model)
+        lr_scheduler, num_epochs = create_scheduler(self.timm_config, optimizer)
         return [optimizer], [lr_scheduler]
 
 
 class EffDetModel(BaseModel):
-    def __init__(self, num_classes: int, img_size: int, model_name: Optional[str] = "tf_efficientdet_lite0"):
+    def __init__(self, num_classes: int, img_size: int, model_name: Optional[str] = "tf_efficientdet_lite0", **timm_args):
         model = efficientdet.model(model_name=model_name, num_classes=num_classes, img_size=img_size, pretrained=True)
         # TODO: change this once pl-mAP is merged: https://github.com/PyTorchLightning/pytorch-lightning/pull/4564
         metrics = [COCOMetric(print_summary=True)]
-
+        self.timm_config = TimmConfig(**timm_args)
         self.pl_metrics = [MyConfusionMatrix(num_classes=num_classes+1)]
         self.__num_val_dataloaders: int = 0
         super().__init__(model=model, metrics=metrics)
