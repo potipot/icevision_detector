@@ -28,3 +28,30 @@ def coco_dataset(
     assert(coco_train.class_map==coco_valid.class_map), \
         f"ClassMap for train and valid differ: {coco_train.class_map=}!={coco_valid.class_map=}"
     return (train_records, valid_records), coco_train.class_map
+
+
+def deepfashion_dataset(
+        root_dir:Union[Path, str],
+        mask: bool = False,
+        autofix: bool = True,
+        cache_records: bool = True
+) -> Tuple[tuple, ClassMap]:
+
+    if isinstance(root_dir, str): root_dir = Path(root_dir)
+    coco_train = icedata.coco.parser(
+        img_dir=root_dir / 'train',
+        annotations_file='./datasets/train.json',
+        mask=mask)
+
+    coco_valid = icedata.coco.parser(
+        img_dir=root_dir / 'validation',
+        annotations_file='./datasets/validation.json',
+        mask=mask)
+
+    train_records, *_ = coco_train.parse(data_splitter=SingleSplitSplitter(), autofix=autofix,
+                                         cache_filepath=root_dir / 'train_cache' if cache_records else None)
+    valid_records, *_ = coco_valid.parse(data_splitter=SingleSplitSplitter(), autofix=autofix,
+                                         cache_filepath=root_dir / 'valid_cache' if cache_records else None)
+
+    assert(coco_train.class_map==coco_valid.class_map), f"ClassMap for train and valid differ: {coco_train.class_map=}!={coco_valid.class_map=}"
+    return (train_records, valid_records), coco_train.class_map
