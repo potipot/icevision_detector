@@ -1,15 +1,14 @@
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Any
 
 import torch
 from torch import nn
 from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 
-from icevision import COCOMetric, ClassMap, Metric
+from icevision import COCOMetric, SimpleConfusionMatrix
 from icevision.models import efficientdet
-from .metrics import SimpleConfusionMatrix
 
 __all__ = ['BaseModel', 'EffDetModel']
 
@@ -42,9 +41,10 @@ class TimmConfig:
 
 
 class BaseModel(efficientdet.lightning.ModelAdapter):
-    def __init__(self, model: nn.Module, metrics: List[Metric] = None):
+    def __init__(self, model: nn.Module, metrics: List[Any] = None, **timm_args):
         super(BaseModel, self).__init__(model=model, metrics=metrics)
         self.n_train_dls, self.n_test_dls, self.n_valid_dls = None, None, None
+        self.timm_config = TimmConfig(**timm_args)
 
     def configure_optimizers(self):
         optimizer = create_optimizer(self.timm_config, self.model)
@@ -84,8 +84,7 @@ class EffDetModel(BaseModel):
         model = efficientdet.model(model_name=model_name, num_classes=num_classes, img_size=img_size, pretrained=True)
         # TODO: change this once pl-mAP is merged: https://github.com/PyTorchLightning/pytorch-lightning/pull/4564
         metrics = [COCOMetric(print_summary=True), SimpleConfusionMatrix()]
-        self.timm_config = TimmConfig(**timm_args)
-        super().__init__(model=model, metrics=metrics)
+        super().__init__(model=model, metrics=metrics, **timm_args)
 
     def validation_step(self, batch, batch_idx, dataset_idx: int = 0):
         # execute validation on batch
@@ -124,7 +123,7 @@ class EffDetModel(BaseModel):
         # create separate metrics for each dataloader
         self.metrics = [
             [deepcopy(metric) for metric in self.metrics]
-            for _ in range(self.n_valid_dls if stage_name == 'train' else self.n_test_dls)
+            for _ in range(self.n_valid_dls if stage_name == 'fit' else self.n_test_dls)
         ]
         # self.pl_metrics = nn.ModuleList(
         #     [nn.ModuleList([deepcopy(pl_metric) for pl_metric in self.pl_metrics])
