@@ -105,11 +105,9 @@ class EffDetModel(BaseModel):
     def validation_epoch_end(self, epoch_output):
         # deprecated?? trainer.evaluation_loop.py @ 210 - for pl factory Metrics in self.evaluation_callback_metrics
         # epoch_output is a list of step_outputs per dataloader shape: [0..n_dls, 0..n_batches]
+        # logging metrics in epoch_end
         for dataset_idx in range(len(self.metrics)):
             self.finalize_metrics(dataset_idx)
-
-        # the len of this must be kept as len of dataloaders, otherwise pl ignores idx
-        # return epoch_output
 
     def test_step(self, batch, batch_idx, dataset_idx=0):
         return self.validation_step(batch, batch_idx, dataset_idx)
@@ -133,6 +131,8 @@ class EffDetModel(BaseModel):
     def finalize_metrics(self, dataset_idx: int = 0) -> None:
         for metric in self.metrics[dataset_idx]:
             metric_logs = metric.finalize()
+            # FIXME: disable logging in sanity check
+            if self.trainer.running_sanity_check: return
             log = getattr(metric, 'log', None)
             if callable(log):
                 log(self.logger)
