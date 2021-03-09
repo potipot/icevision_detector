@@ -4,6 +4,7 @@ from typing import Optional, List, Any
 
 import torch
 from torch import nn
+import pytorch_lightning as pl
 from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 
@@ -40,7 +41,7 @@ class TimmConfig:
     seed: int = 42
 
 
-class BaseModel(efficientdet.lightning.ModelAdapter):
+class BaseModel(pl.LightningModule):
     def __init__(self, model: nn.Module, metrics: List[Any] = None, **timm_args):
         super(BaseModel, self).__init__(model=model, metrics=metrics)
         self.n_train_dls, self.n_test_dls, self.n_valid_dls = None, None, None
@@ -79,7 +80,7 @@ class BaseModel(efficientdet.lightning.ModelAdapter):
         self.train()
 
 
-class EffDetModel(BaseModel):
+class EffDetModel(BaseModel, efficientdet.lightning.ModelAdapter):
     def __init__(self, num_classes: int, img_size: int, model_name: Optional[str] = "tf_efficientdet_lite0", **timm_args):
         model = efficientdet.model(model_name=model_name, num_classes=num_classes, img_size=img_size, pretrained=True)
         # TODO: change this once pl-mAP is merged: https://github.com/PyTorchLightning/pytorch-lightning/pull/4564
