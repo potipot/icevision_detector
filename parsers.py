@@ -5,15 +5,20 @@ __all__ = ['TxtParser', 'test_pipeline']
 
 
 def get_txt_annotations(txt_file_path):
-    with open(txt_file_path) as text_file:
-        data = text_file.readlines()
-
     bboxes, labels = [], []
-    for line in data:
-        bbox, label = line.strip().split('|')
-        bbox = [float(px) for px in bbox.split(',')]
-        bboxes.append(bbox)
-        labels.append(label)
+    try:
+        with open(txt_file_path) as text_file:
+            data = text_file.readlines()
+
+        for line in data:
+            bbox, label = line.strip().split('|')
+            bbox = [float(px) for px in bbox.split(',')]
+            bboxes.append(bbox)
+            labels.append(label)
+    except FileNotFoundError:
+        warnings.warn(f"{txt_file_path} not found, inserting dummy labels")
+        bboxes.append([0,0,0,0])
+        labels.append(0)
     return {'bboxes': bboxes, 'labels': labels}
 
 
@@ -125,8 +130,8 @@ class TxtParser(parsers.Parser, parsers.FilepathMixin, parsers.LabelsMixin, pars
         self.path = path
         self.items = get_image_files(path, folders=folders)
         self.path2label = {str(item): self.pipeline(item) for item in self.items}
-        # self.class_map = class_map
-        super().__init__(class_map=class_map)
+        self.class_map = class_map
+        # super().__init__(class_map=class_map)
 
     def __iter__(self): return iter(self.items)
     def __len__(self): return len(self.items)
@@ -135,7 +140,7 @@ class TxtParser(parsers.Parser, parsers.FilepathMixin, parsers.LabelsMixin, pars
     def filepath(self, o) -> Union[str, Path]: return o
     def bboxes(self, o) -> List[BBox]: return [BBox(*bbox) for bbox in self.path2label[str(o)].bboxes]
     def labels(self, o) -> List[int]:
-        return self.path2label[str(o)].labels
+        return [self.class_map.get_name(lbl) for lbl in self.path2label[str(o)].labels]
 
     @staticmethod
     def list_labels(x):
