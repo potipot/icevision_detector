@@ -1,7 +1,5 @@
-from IPython.core.display import display
 from icevision.imports import *
-from icevision import ClassMap, BaseRecord
-from ipywidgets import IntProgress
+from icevision import ClassMap, BBox, BaseRecord, pbar
 
 
 @dataclass
@@ -23,21 +21,22 @@ class COCOAnnotationExporter:
         return self.__annotation_id
 
     def export(self, outfile='coco_formatted_annotations.json', records: Collection[BaseRecord] = tuple()):
-        progress_bar = IntProgress(min=0, max=len(records), description='Generating json file:')
+        logger.info(
+            f"Saving records in coco format to {outfile}",
+        )
         coco = COCOAnnotation()
-        display(progress_bar)
-        for record in records:
+        for record in pbar(records):
             coco.images.extend(self.create_image_annotations(record))
             coco.annotations.extend(self.create_coco_annotations(record))
-            progress_bar.value += 1
         coco.categories = self.create_categories()
 
         with open(outfile, mode='w') as outfile:
             json.dump(dataclasses.asdict(coco), outfile, indent=2)
 
-    def create_single_annotation(self, bbox, label_id, image_id):
+    def create_single_annotation(self, bbox: BBox, label: str, image_id: int):
         xywh = bbox.xywh
         area = bbox.area
+        label_id = self.class_map.get_by_name(label)
         annotation_id = self.get_annotation_id()
 
         annotation = {
@@ -53,10 +52,10 @@ class COCOAnnotationExporter:
         return annotation
 
     def create_coco_annotations(self, record):
-        image_id = record.imageid
+        image_id = record.record_id
         annotations = [
             self.create_single_annotation(bbox, label, image_id)
-            for bbox, label in zip(record.bboxes, record.labels)
+            for bbox, label in zip(record.detection.bboxes, record.detection.labels)
         ]
 
         return annotations
@@ -65,7 +64,7 @@ class COCOAnnotationExporter:
         file_path = record.filepath.relative_to(self.img_dir).as_posix()
         width = record.width
         height = record.height
-        image_id = record.imageid
+        image_id = record.record_id
         images = [{
             'file_name': file_path,
             'height': height,
@@ -77,7 +76,7 @@ class COCOAnnotationExporter:
 
     def create_categories(self):
         categories = []
-        for label, idx in self.class_map.class2id.items():
+        for label, idx in self.class_map._class2id.items():
             category = {
                 "supercategory": label,
                 "id": idx,

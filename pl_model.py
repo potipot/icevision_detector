@@ -8,10 +8,12 @@ import pytorch_lightning as pl
 from timm.optim import create_optimizer
 from timm.scheduler import create_scheduler
 
-from icevision import COCOMetric, SimpleConfusionMatrix
+from icevision import COCOMetric#, SimpleConfusionMatrix
 from icevision.models import efficientdet
 
 __all__ = ['BaseModel', 'EffDetModel']
+
+from icevision.models.ross.efficientdet import EfficientDetBackboneConfig
 
 
 @dataclass
@@ -82,9 +84,14 @@ class BaseModel(pl.LightningModule):
 
 class EffDetModel(BaseModel, efficientdet.lightning.ModelAdapter):
     def __init__(self, num_classes: int, img_size: int, model_name: Optional[str] = "tf_efficientdet_lite0", **timm_args):
-        model = efficientdet.model(model_name=model_name, num_classes=num_classes, img_size=img_size, pretrained=True)
+        backbone_config = EfficientDetBackboneConfig(model_name=model_name)
+        model = efficientdet.model(
+            backbone=backbone_config(pretrained=True),
+            num_classes=num_classes,
+            img_size=img_size
+        )
         # TODO: change this once pl-mAP is merged: https://github.com/PyTorchLightning/pytorch-lightning/pull/4564
-        metrics = [COCOMetric(print_summary=True), SimpleConfusionMatrix()]
+        metrics = [COCOMetric(print_summary=True)]#, SimpleConfusionMatrix()]
         super().__init__(model=model, metrics=metrics, **timm_args)
 
     def validation_step(self, batch, batch_idx, dataset_idx: int = 0):
@@ -93,12 +100,18 @@ class EffDetModel(BaseModel, efficientdet.lightning.ModelAdapter):
 
         with torch.no_grad():
             raw_preds = self(xb, yb)
-            preds = efficientdet.convert_raw_predictions(raw_preds["detections"], 0)
+            preds = efficientdet.convert_raw_predictions(
+                raw_preds=raw_preds["detections"],
+                records=records,
+                detection_threshold=0
+            )
+
             val_losses = {f'val_{key}': value for key, value in raw_preds.items() if 'loss' in key}
             loss = efficientdet.loss_fn(raw_preds, yb)
 
         for metric in self.metrics[dataset_idx]:
-            metric.accumulate(records=records, preds=preds)
+            # TODO: update old metric.accumulate(records=records, preds=preds)
+            metric.accumulate(preds=preds)
 
         # logging losses in step
         self.log_dict(val_losses)
@@ -141,3 +154,16 @@ class EffDetModel(BaseModel, efficientdet.lightning.ModelAdapter):
                 for k, v in metric_logs.items():
                     # TODO: metric logging with forced dataset_idx
                     self.log(f"{metric.name}/{k}/dl_idx_{dataset_idx}", v)
+
+    def load_matching(self, checkpoint_path: str):
+        this_model = self.model.state_dict()
+        trained_model = torch.load(checkpoint_path)['state_dict']
+
+        for (this_module, this_param), (loaded_module, loaded_param) in zip(this_model.items(), trained_model.items()):
+            assert ('model.' + this_module == loaded_module), f'Models differ: {this_module}, {loaded_module}'
+            if this_param.shape == loaded_param.shape:
+                this_model[this_module] = loaded_param
+            else:
+                print(f'Weights not loaded: {this_module}: {this_param.shape=}, {loaded_param.shape=}')
+
+        return self.model.load_state_dict(this_model)
